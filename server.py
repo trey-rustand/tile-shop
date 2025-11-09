@@ -441,19 +441,49 @@ def apply_overlay():
                 print(f"🔍 DEBUG - File upload size: {len(raw_bytes)} bytes")
                 print(f"🔍 DEBUG - File filename: {file.filename}")
                 print(f"🔍 DEBUG - First 100 bytes (hex): {raw_bytes[:100].hex() if len(raw_bytes) > 100 else raw_bytes.hex()}")
-                print(f"🔍 DEBUG - First 100 bytes (repr): {repr(raw_bytes[:100]) if len(raw_bytes) > 100 else repr(raw_bytes)}")
+                
+                # Detect file format from magic bytes
+                file_format = None
+                if len(raw_bytes) >= 4:
+                    if raw_bytes.startswith(b'\x89PNG'):
+                        file_format = 'PNG'
+                    elif raw_bytes.startswith(b'\xff\xd8\xff'):
+                        file_format = 'JPEG'
+                    elif raw_bytes.startswith(b'RIFF') and len(raw_bytes) >= 12 and b'WEBP' in raw_bytes[:12]:
+                        file_format = 'WEBP'
+                    elif raw_bytes.startswith(b'GIF'):
+                        file_format = 'GIF'
+                    elif raw_bytes.startswith(b'BM'):
+                        file_format = 'BMP'
+                print(f"🔍 DEBUG - Detected format from magic bytes: {file_format}")
                 
                 # Try multiple approaches to decode the image
                 decoded_attempts = []
                 
                 # Attempt 1: Direct bytes (normal image file)
                 try:
-                    test_img = Image.open(io.BytesIO(raw_bytes))
+                    img_buffer = io.BytesIO(raw_bytes)
+                    test_img = Image.open(img_buffer)
+                    # Force load to ensure it's valid
+                    test_img.load()
                     image_data = raw_bytes
-                    print(f"✅ Loaded image from multipart form upload (format: {test_img.format})")
+                    print(f"✅ Loaded image from multipart form upload (format: {test_img.format}, size: {test_img.size})")
                 except Exception as e1:
                     decoded_attempts.append(f"Direct bytes: {str(e1)}")
                     print(f"🔍 DEBUG - Direct bytes failed: {e1}")
+                    
+                    # Attempt 1.5: Try with explicit format for WebP
+                    if file_format == 'WEBP':
+                        try:
+                            img_buffer = io.BytesIO(raw_bytes)
+                            # Try opening with explicit format
+                            test_img = Image.open(img_buffer)
+                            test_img.load()
+                            image_data = raw_bytes
+                            print(f"✅ Loaded WebP image with explicit handling (format: {test_img.format})")
+                        except Exception as e1b:
+                            decoded_attempts.append(f"WebP explicit: {str(e1b)}")
+                            print(f"🔍 DEBUG - WebP explicit handling failed: {e1b}")
                     
                     # Attempt 2: Try as UTF-8 string, then base64 decode
                     try:
@@ -500,13 +530,26 @@ def apply_overlay():
                             decoded_attempts.append(f"Cleaned base64: {str(e3)}")
                             print(f"🔍 DEBUG - All decode attempts failed")
                             print(f"🔍 DEBUG - Attempts: {decoded_attempts}")
+                            
+                            # Special handling for WebP files
+                            if file_format == 'WEBP':
+                                error_msg = (
+                                    'WebP image format detected but could not be processed. '
+                                    'This may be due to file corruption during upload. '
+                                    'Please try converting the image to JPEG or PNG format, or ensure WebP support is enabled in Pillow.'
+                                )
+                            else:
+                                error_msg = f'Invalid image file uploaded: Could not decode image data'
+                            
                             return jsonify({
-                                'error': f'Invalid image file uploaded: Could not decode image data',
+                                'error': error_msg,
                                 'debug': {
                                     'file_size': len(raw_bytes),
                                     'filename': file.filename,
+                                    'detected_format': file_format,
                                     'first_bytes_hex': raw_bytes[:50].hex() if len(raw_bytes) > 50 else raw_bytes.hex(),
-                                    'decode_attempts': decoded_attempts
+                                    'decode_attempts': decoded_attempts,
+                                    'suggestion': 'Try converting to JPEG or PNG format' if file_format == 'WEBP' else 'Ensure file is a valid image format (JPEG, PNG, GIF, WebP)'
                                 }
                             }), 400
 
