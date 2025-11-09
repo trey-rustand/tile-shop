@@ -257,6 +257,61 @@ def create_smart_floor_mask(room_img, floor_data=None):
     
     return mask
 
+def repair_corrupted_image_data(raw_bytes):
+    """
+    Attempts to repair image data corrupted by Power Automate's text encoding.
+    Power Automate sometimes corrupts binary data by adding UTF-8 replacement characters.
+    This function searches for actual image magic bytes and extracts valid data from there.
+    """
+    # Magic bytes for different image formats (in order of priority)
+    magic_patterns = [
+        (b'\xff\xd8\xff', 'JPEG'),      # JPEG files start with FFD8FF
+        (b'JFIF', 'JPEG'),              # JPEG files contain JFIF marker
+        (b'\x89PNG', 'PNG'),            # PNG files start with 89 50 4E 47
+        (b'RIFF', 'WEBP'),              # WebP files start with RIFF
+        (b'GIF8', 'GIF'),               # GIF files start with GIF8
+        (b'BM', 'BMP'),                 # BMP files start with BM
+    ]
+    
+    # Search for magic bytes in the data
+    for magic, format_name in magic_patterns:
+        # Find the position of magic bytes
+        pos = raw_bytes.find(magic)
+        if pos >= 0:  # Found at position (could be 0 or greater)
+            if pos > 0:
+                print(f"🔧 Found {format_name} magic bytes at position {pos}, repairing corrupted data...")
+                # Extract everything from the magic bytes onwards
+                repaired = raw_bytes[pos:]
+            else:
+                # Magic bytes at start, but might still be corrupted - try as-is first
+                repaired = raw_bytes
+            
+            try:
+                # For JPEG with JFIF, we need to find the actual JPEG start (FFD8FF)
+                if format_name == 'JPEG' and magic == b'JFIF':
+                    # Look backwards from JFIF to find FFD8FF
+                    jpeg_start = raw_bytes.rfind(b'\xff\xd8\xff', 0, pos + 10)
+                    if jpeg_start >= 0 and jpeg_start < pos:
+                        print(f"🔧 Found JPEG start marker at {jpeg_start}, using that instead")
+                        repaired = raw_bytes[jpeg_start:]
+                    # If no FFD8FF found, try to construct valid JPEG header
+                    elif pos > 0:
+                        # Try inserting JPEG header before JFIF
+                        jpeg_header = b'\xff\xd8\xff\xe0'
+                        repaired = jpeg_header + raw_bytes[pos:]
+                
+                # Verify it's a valid image
+                test_img = Image.open(io.BytesIO(repaired))
+                test_img.load()
+                print(f"✅ Successfully repaired {format_name} image (removed {pos} corrupted bytes)")
+                return repaired
+            except Exception as e:
+                print(f"🔍 Repair attempt for {format_name} at position {pos} failed: {e}")
+                continue
+    
+    # If no magic bytes found, return None
+    return None
+
 def apply_tile_overlay(room_image, tile_texture, use_ai_detection=True):
     """
     Apply tile overlay using AI-powered floor detection for better results
@@ -472,8 +527,23 @@ def apply_overlay():
                     decoded_attempts.append(f"Direct bytes: {str(e1)}")
                     print(f"🔍 DEBUG - Direct bytes failed: {e1}")
                     
-                    # Attempt 1.5: Try with explicit format for WebP
-                    if file_format == 'WEBP':
+                    # Attempt 1.5: Try to repair corrupted data (Power Automate issue)
+                    try:
+                        repaired = repair_corrupted_image_data(raw_bytes)
+                        if repaired:
+                            img_buffer = io.BytesIO(repaired)
+                            test_img = Image.open(img_buffer)
+                            test_img.load()
+                            image_data = repaired
+                            print(f"✅ Repaired and loaded corrupted image (format: {test_img.format}, size: {test_img.size})")
+                        else:
+                            raise ValueError("Could not repair corrupted data")
+                    except Exception as e1a:
+                        decoded_attempts.append(f"Repair corrupted: {str(e1a)}")
+                        print(f"🔍 DEBUG - Repair attempt failed: {e1a}")
+                    
+                    # Attempt 1.6: Try with explicit format for WebP
+                    if not image_data and file_format == 'WEBP':
                         try:
                             img_buffer = io.BytesIO(raw_bytes)
                             # Try opening with explicit format
