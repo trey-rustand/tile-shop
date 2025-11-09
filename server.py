@@ -414,15 +414,50 @@ Keep everything else exactly the same - only change the tiles."""
 def apply_overlay():
     """Apply tile overlay to uploaded room image using AI image editing"""
     try:
-        if 'image' not in request.files:
-            return jsonify({'error': 'No image provided'}), 400
+        # Handle both form data and JSON requests
+        if request.is_json:
+            json_data = request.json or {}
+            tile_sku = json_data.get('tileSku', 'TS-001')
+            tile_name = json_data.get('tileName', 'Classic White')
+            image_url = json_data.get('image')
+        else:
+            tile_sku = request.form.get('tileSku', 'TS-001')
+            tile_name = request.form.get('tileName', 'Classic White')
+            image_url = request.form.get('image')
         
-        file = request.files['image']
-        tile_sku = request.form.get('tileSku', 'TS-001')
-        tile_name = request.form.get('tileName', 'Classic White')
+        # Handle both file upload and image URL
+        image_data = None
         
-        # Read image
-        image_data = file.read()
+        # Check if image is a file upload
+        if 'image' in request.files:
+            file = request.files['image']
+            if file.filename:  # Make sure it's not empty
+                image_data = file.read()
+        
+        # If no file, check if image is a URL string or base64 data URI
+        if not image_data and image_url:
+            # Handle base64 data URI (e.g., data:image/jpeg;base64,/9j/4AAQ...)
+            if image_url.startswith('data:image'):
+                try:
+                    # Extract base64 data from data URI
+                    header, encoded = image_url.split(',', 1)
+                    image_data = base64.b64decode(encoded)
+                    print(f"✅ Decoded base64 image data URI")
+                except Exception as e:
+                    return jsonify({'error': f'Failed to decode base64 image: {str(e)}'}), 400
+            # Handle HTTP/HTTPS URL
+            elif image_url.startswith('http://') or image_url.startswith('https://'):
+                try:
+                    # Download image from URL
+                    response = requests.get(image_url, timeout=30)
+                    response.raise_for_status()
+                    image_data = response.content
+                    print(f"✅ Downloaded image from URL: {image_url}")
+                except Exception as e:
+                    return jsonify({'error': f'Failed to download image from URL: {str(e)}'}), 400
+        
+        if not image_data:
+            return jsonify({'error': 'No image provided. Send either a file upload, image URL, or base64 data URI'}), 400
         
         # Try using Gemini/Nano Banana for intelligent tile replacement first
         if GEMINI_API_KEY:
@@ -834,5 +869,7 @@ if __name__ == '__main__':
     Gemini/Nano Banana: {'✅ Configured' if GEMINI_API_KEY else '❌ Not configured (add GEMINI_API_KEY to .env)'}
     """)
     
+    # Only run Flask dev server if not using gunicorn (local development)
+    # Gunicorn will handle production on Render
     app.run(host='0.0.0.0', port=port, debug=debug)
 
