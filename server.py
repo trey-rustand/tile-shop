@@ -439,31 +439,76 @@ def apply_overlay():
             if file and file.filename:
                 raw_bytes = file.read()
                 print(f"🔍 DEBUG - File upload size: {len(raw_bytes)} bytes")
+                print(f"🔍 DEBUG - File filename: {file.filename}")
+                print(f"🔍 DEBUG - First 100 bytes (hex): {raw_bytes[:100].hex() if len(raw_bytes) > 100 else raw_bytes.hex()}")
+                print(f"🔍 DEBUG - First 100 bytes (repr): {repr(raw_bytes[:100]) if len(raw_bytes) > 100 else repr(raw_bytes)}")
+                
+                # Try multiple approaches to decode the image
+                decoded_attempts = []
+                
+                # Attempt 1: Direct bytes (normal image file)
                 try:
-                    # Try direct bytes first
                     test_img = Image.open(io.BytesIO(raw_bytes))
                     image_data = raw_bytes
                     print(f"✅ Loaded image from multipart form upload (format: {test_img.format})")
-                except Exception as e:
-                    print(f"🔍 DEBUG - Direct bytes failed: {e}, trying base64 decode...")
+                except Exception as e1:
+                    decoded_attempts.append(f"Direct bytes: {str(e1)}")
+                    print(f"🔍 DEBUG - Direct bytes failed: {e1}")
+                    
+                    # Attempt 2: Try as UTF-8 string, then base64 decode
                     try:
-                        # If Pillow can't recognize, try base64 decoding
-                        # Handle both string and bytes
                         if isinstance(raw_bytes, bytes):
+                            # Try to decode as UTF-8 string
                             try:
-                                # Try decoding as UTF-8 string first, then base64
-                                decoded = base64.b64decode(raw_bytes.decode('utf-8'))
-                            except (UnicodeDecodeError, ValueError):
-                                # If not UTF-8, try direct base64 decode
+                                utf8_str = raw_bytes.decode('utf-8')
+                                print(f"🔍 DEBUG - Successfully decoded as UTF-8 string (length: {len(utf8_str)})")
+                                # Check if it looks like base64
+                                if utf8_str.replace('\n', '').replace('\r', '').replace(' ', '').replace('=', '').isalnum() or '+' in utf8_str or '/' in utf8_str:
+                                    decoded = base64.b64decode(utf8_str)
+                                    test_img = Image.open(io.BytesIO(decoded))
+                                    image_data = decoded
+                                    print(f"✅ Decoded UTF-8 string as base64 (format: {test_img.format})")
+                                else:
+                                    raise ValueError("Doesn't look like base64")
+                            except (UnicodeDecodeError, ValueError) as e:
+                                print(f"🔍 DEBUG - UTF-8 decode failed: {e}, trying direct base64...")
+                                # Try direct base64 decode of bytes
                                 decoded = base64.b64decode(raw_bytes)
+                                test_img = Image.open(io.BytesIO(decoded))
+                                image_data = decoded
+                                print(f"✅ Decoded bytes directly as base64 (format: {test_img.format})")
                         else:
                             decoded = base64.b64decode(raw_bytes)
-                        test_img = Image.open(io.BytesIO(decoded))
-                        image_data = decoded
-                        print(f"✅ Decoded Power Automate base64-to-binary upload (format: {test_img.format})")
+                            test_img = Image.open(io.BytesIO(decoded))
+                            image_data = decoded
+                            print(f"✅ Decoded as base64 (format: {test_img.format})")
                     except Exception as e2:
-                        print(f"❌ Failed to identify uploaded image data: {e2}")
-                        return jsonify({'error': f'Invalid image file uploaded: {str(e2)}'}), 400
+                        decoded_attempts.append(f"Base64 decode: {str(e2)}")
+                        print(f"🔍 DEBUG - Base64 decode failed: {e2}")
+                        
+                        # Attempt 3: Try stripping whitespace/newlines first
+                        try:
+                            if isinstance(raw_bytes, bytes):
+                                cleaned = raw_bytes.decode('utf-8').strip().replace('\n', '').replace('\r', '').replace(' ', '')
+                                decoded = base64.b64decode(cleaned)
+                                test_img = Image.open(io.BytesIO(decoded))
+                                image_data = decoded
+                                print(f"✅ Decoded cleaned base64 string (format: {test_img.format})")
+                            else:
+                                raise ValueError("Not bytes")
+                        except Exception as e3:
+                            decoded_attempts.append(f"Cleaned base64: {str(e3)}")
+                            print(f"🔍 DEBUG - All decode attempts failed")
+                            print(f"🔍 DEBUG - Attempts: {decoded_attempts}")
+                            return jsonify({
+                                'error': f'Invalid image file uploaded: Could not decode image data',
+                                'debug': {
+                                    'file_size': len(raw_bytes),
+                                    'filename': file.filename,
+                                    'first_bytes_hex': raw_bytes[:50].hex() if len(raw_bytes) > 50 else raw_bytes.hex(),
+                                    'decode_attempts': decoded_attempts
+                                }
+                            }), 400
 
         # 🔹 Case 2: Form field or JSON with image data (URL, base64 string, or data URI)
         if not image_data and image_url:
