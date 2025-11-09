@@ -414,6 +414,12 @@ Keep everything else exactly the same - only change the tiles."""
 def apply_overlay():
     """Apply tile overlay to uploaded room image using AI image editing"""
     try:
+        # Debug logging
+        print(f"🔍 DEBUG - Content-Type: {request.content_type}")
+        print(f"🔍 DEBUG - Is JSON: {request.is_json}")
+        print(f"🔍 DEBUG - Form keys: {list(request.form.keys())}")
+        print(f"🔍 DEBUG - Files keys: {list(request.files.keys())}")
+        
         # Handle both form data and JSON requests
         if request.is_json:
             json_data = request.json or {}
@@ -425,77 +431,142 @@ def apply_overlay():
             tile_name = request.form.get('tileName', 'Classic White')
             image_url = request.form.get('image')
         
-        # Handle both file upload and image URL
         image_data = None
-        
-        # Check if image is a file upload
+
+        # 🔹 Case 1: File upload (multipart/form-data)
         if 'image' in request.files:
             file = request.files['image']
-            if file.filename:  # Make sure it's not empty
-                image_data = file.read()
-        
-        # If no file, check if image is a URL string or base64 data URI
+            if file and file.filename:
+                raw_bytes = file.read()
+                print(f"🔍 DEBUG - File upload size: {len(raw_bytes)} bytes")
+                try:
+                    # Try direct bytes first
+                    test_img = Image.open(io.BytesIO(raw_bytes))
+                    image_data = raw_bytes
+                    print(f"✅ Loaded image from multipart form upload (format: {test_img.format})")
+                except Exception as e:
+                    print(f"🔍 DEBUG - Direct bytes failed: {e}, trying base64 decode...")
+                    try:
+                        # If Pillow can't recognize, try base64 decoding
+                        # Handle both string and bytes
+                        if isinstance(raw_bytes, bytes):
+                            try:
+                                # Try decoding as UTF-8 string first, then base64
+                                decoded = base64.b64decode(raw_bytes.decode('utf-8'))
+                            except (UnicodeDecodeError, ValueError):
+                                # If not UTF-8, try direct base64 decode
+                                decoded = base64.b64decode(raw_bytes)
+                        else:
+                            decoded = base64.b64decode(raw_bytes)
+                        test_img = Image.open(io.BytesIO(decoded))
+                        image_data = decoded
+                        print(f"✅ Decoded Power Automate base64-to-binary upload (format: {test_img.format})")
+                    except Exception as e2:
+                        print(f"❌ Failed to identify uploaded image data: {e2}")
+                        return jsonify({'error': f'Invalid image file uploaded: {str(e2)}'}), 400
+
+        # 🔹 Case 2: Form field or JSON with image data (URL, base64 string, or data URI)
         if not image_data and image_url:
-            # Handle base64 data URI (e.g., data:image/jpeg;base64,/9j/4AAQ...)
+            print(f"🔍 DEBUG - Processing image_url (length: {len(image_url) if image_url else 0})")
+            
+            # Check if it's a data URI (data:image/...)
             if image_url.startswith('data:image'):
                 try:
-                    # Extract base64 data from data URI
                     header, encoded = image_url.split(',', 1)
                     image_data = base64.b64decode(encoded)
-                    print(f"✅ Decoded base64 image data URI")
+                    test_img = Image.open(io.BytesIO(image_data))
+                    print(f"✅ Decoded base64 data URI (format: {test_img.format})")
                 except Exception as e:
-                    return jsonify({'error': f'Failed to decode base64 image: {str(e)}'}), 400
-            # Handle HTTP/HTTPS URL
+                    return jsonify({'error': f'Failed to decode base64 data URI: {str(e)}'}), 400
+            
+            # Check if it's a URL
             elif image_url.startswith('http://') or image_url.startswith('https://'):
                 try:
-                    # Download image from URL
-                    response = requests.get(image_url, timeout=30)
+                    headers = {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                    }
+                    response = requests.get(image_url, headers=headers, timeout=30)
                     response.raise_for_status()
                     image_data = response.content
-                    print(f"✅ Downloaded image from URL: {image_url}")
+                    test_img = Image.open(io.BytesIO(image_data))
+                    print(f"✅ Downloaded image from URL (format: {test_img.format})")
                 except Exception as e:
-                    return jsonify({'error': f'Failed to download image from URL: {str(e)}'}), 400
-        
+                    return jsonify({'error': f'Failed to download image: {str(e)}'}), 400
+            
+            # Check if it's a plain base64 string (Power Automate might send this)
+            else:
+                try:
+                    # Try to decode as base64
+                    decoded = base64.b64decode(image_url)
+                    test_img = Image.open(io.BytesIO(decoded))
+                    image_data = decoded
+                    print(f"✅ Decoded plain base64 string from form field (format: {test_img.format})")
+                except Exception as e:
+                    # If it's not base64, log for debugging but don't fail yet
+                    print(f"🔍 DEBUG - Not a valid base64 string: {e}")
+                    print(f"🔍 DEBUG - First 100 chars of image_url: {image_url[:100] if image_url else None}")
+
+        # Final validation - ensure we have valid image data
         if not image_data:
-            return jsonify({'error': 'No image provided. Send either a file upload, image URL, or base64 data URI'}), 400
+            return jsonify({
+                'error': 'No image provided. Send a file upload, base64 data URI, base64 string, or image URL',
+                'debug': {
+                    'content_type': request.content_type,
+                    'is_json': request.is_json,
+                    'form_keys': list(request.form.keys()),
+                    'files_keys': list(request.files.keys()),
+                    'image_url_length': len(image_url) if image_url else 0,
+                    'image_url_preview': image_url[:100] if image_url else None
+                }
+            }), 400
         
-        # Try using Gemini/Nano Banana for intelligent tile replacement first
+        # Validate image data is actually a valid image before processing
+        try:
+            test_img = Image.open(io.BytesIO(image_data))
+            print(f"✅ Image validated successfully (format: {test_img.format}, size: {test_img.size})")
+        except Exception as e:
+            return jsonify({
+                'error': f'Invalid image data: {str(e)}',
+                'debug': {
+                    'data_length': len(image_data),
+                    'data_preview_hex': image_data[:50].hex() if len(image_data) > 50 else image_data.hex()
+                }
+            }), 400
+
+        # 🔹 Try Gemini first
         if GEMINI_API_KEY:
             print(f"🎯 Attempting Nano Banana tile replacement for {tile_name} (SKU: {tile_sku})")
             try:
                 result_image = apply_tile_with_gemini(image_data, tile_name, tile_sku)
                 if result_image:
-                    print(f"✅ Nano Banana successfully replaced tiles!")
                     output = io.BytesIO()
                     result_image.save(output, format='JPEG', quality=90)
                     output.seek(0)
+                    print("✅ Gemini output sent back to client")
                     return send_file(output, mimetype='image/jpeg')
                 else:
-                    print(f"⚠️ Nano Banana returned None, using fallback overlay")
+                    print("⚠️ Gemini returned None, falling back to overlay")
             except Exception as e:
-                print(f"❌ Gemini tile replacement failed, using fallback: {e}")
-                import traceback
-                traceback.print_exc()
-        else:
-            print(f"⚠️ No GEMINI_API_KEY configured, using fallback overlay")
-        
-        # Fallback to simple overlay if Gemini fails or not available
+                print(f"❌ Gemini error: {e}")
+                import traceback; traceback.print_exc()
+
+        # 🔹 Fallback to local overlay if Gemini fails
         tile_texture = create_tile_texture(tile_name, tile_sku)
-        use_ai = bool(openai_client)  # Use AI detection if OpenAI is available
+        use_ai = bool(openai_client)
         result_image = apply_tile_overlay(image_data, tile_texture, use_ai_detection=use_ai)
-        
-        # Convert to bytes
+
         output = io.BytesIO()
         result_image.save(output, format='JPEG', quality=90)
         output.seek(0)
-        
+        print("✅ Fallback overlay applied successfully")
+
         return send_file(output, mimetype='image/jpeg')
-    
+
     except Exception as e:
-        print(f"Error applying overlay: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"❌ Error applying overlay: {e}")
+        import traceback; traceback.print_exc()
         return jsonify({'error': str(e)}), 500
+
 
 @app.route('/api/ai-enhance', methods=['POST'])
 def ai_enhance():
