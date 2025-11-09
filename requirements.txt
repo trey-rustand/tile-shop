@@ -6,4 +6,5 @@ python-dotenv==1.0.0
 openai
 google-genai
 gunicorn
+numpy
 
