@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tile Shop - AI Design Visualization Platform</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+            background: #f5f7fa;
+            color: #1a1a1a;
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+
+        .app-container {
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
+        /* Header */
+        .header {
+            background: #ffffff;
+            border-bottom: 1px solid #e1e8ed;
+            padding: 0;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        .header-content {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo-section {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .logo-icon {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, #0066cc 0%, #004499 100%);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 700;
+            font-size: 18px;
+        }
+
+        .logo-text h1 {
+            font-size: 24px;
+            font-weight: 600;
+            color: #1a1a1a;
+            margin: 0;
+        }
+
+        .logo-text p {
+            font-size: 13px;
+            color: #6b7280;
+            margin: 0;
+        }
+
+        .header-badge {
+            background: #f0f9ff;
+            border: 1px solid #bae6fd;
+            color: #0369a1;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            max-width: 1400px;
+            margin: 0 auto;
+            width: 100%;
+            padding: 40px;
+        }
+
+        .section {
+            background: #ffffff;
+            border-radius: 12px;
+            border: 1px solid #e1e8ed;
+            padding: 32px;
+            margin-bottom: 24px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        .section-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: #1a1a1a;
+            margin-bottom: 8px;
+        }
+
+        .section-subtitle {
+            font-size: 14px;
+            color: #6b7280;
+            margin-bottom: 24px;
+        }
+
+        /* Upload Area */
+        .source-toggle {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 24px;
+            background: #f9fafb;
+            padding: 4px;
+            border-radius: 8px;
+        }
+
+        .toggle-btn {
+            flex: 1;
+            padding: 12px 24px;
+            border: none;
+            background: transparent;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            color: #6b7280;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .toggle-btn.active {
+            background: #ffffff;
+            color: #0066cc;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .upload-area {
+            border: 2px dashed #d1d5db;
+            border-radius: 8px;
+            padding: 48px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: #fafbfc;
+        }
+
+        .upload-area:hover {
+            border-color: #0066cc;
+            background: #f0f9ff;
+        }
+
+        .upload-area.dragover {
+            border-color: #0066cc;
+            background: #f0f9ff;
+        }
+
+        .upload-icon {
+            width: 64px;
+            height: 64px;
+            margin: 0 auto 16px;
+            background: #e5e7eb;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 32px;
+        }
+
+        .upload-area:hover .upload-icon {
+            background: #dbeafe;
+        }
+
+        .upload-text {
+            font-size: 16px;
+            font-weight: 500;
+            color: #1a1a1a;
+            margin-bottom: 4px;
+        }
+
+        .upload-hint {
+            font-size: 14px;
+            color: #6b7280;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        /* Preview Section */
+        .preview-section {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            margin-bottom: 24px;
+        }
+
+        .preview-card {
+            border: 1px solid #e1e8ed;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #ffffff;
+        }
+
+        .preview-header {
+            padding: 16px 20px;
+            background: #f9fafb;
+            border-bottom: 1px solid #e1e8ed;
+        }
+
+        .preview-header h3 {
+            font-size: 14px;
+            font-weight: 600;
+            color: #1a1a1a;
+            margin: 0;
+        }
+
+        .preview-body {
+            padding: 20px;
+            min-height: 300px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #fafbfc;
+        }
+
+        .preview-image {
+            width: 100%;
+            max-height: 500px;
+            object-fit: contain;
+            border-radius: 4px;
+        }
+
+        /* Tile Selection */
+        .tile-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            gap: 16px;
+            margin-top: 20px;
+        }
+
+        .tile-card {
+            border: 2px solid #e1e8ed;
+            border-radius: 8px;
+            padding: 16px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: #ffffff;
+        }
+
+        .tile-card:hover {
+            border-color: #0066cc;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,102,204,0.15);
+        }
+
+        .tile-card.selected {
+            border-color: #0066cc;
+            background: #f0f9ff;
+            box-shadow: 0 0 0 3px rgba(0,102,204,0.1);
+        }
+
+        .tile-pattern {
+            width: 100%;
+            height: 120px;
+            border-radius: 6px;
+            margin-bottom: 12px;
+            background-size: cover;
+            background-position: center;
+            border: 1px solid #e1e8ed;
+        }
+
+        .tile-name {
+            font-weight: 600;
+            color: #1a1a1a;
+            font-size: 14px;
+            margin-bottom: 4px;
+        }
+
+        .tile-sku {
+            font-size: 12px;
+            color: #6b7280;
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: #0066cc;
+            color: white;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            background: #0052a3;
+            box-shadow: 0 4px 12px rgba(0,102,204,0.3);
+        }
+
+        .btn-secondary {
+            background: #f3f4f6;
+            color: #374151;
+            border: 1px solid #d1d5db;
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            background: #e5e7eb;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-lg {
+            padding: 16px 32px;
+            font-size: 16px;
+        }
+
+        /* Controls */
+        .controls {
+            display: flex;
+            gap: 12px;
+            margin-top: 24px;
+            flex-wrap: wrap;
+        }
+
+        /* Loading */
+        .loading {
+            text-align: center;
+            padding: 40px;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid #e5e7eb;
+            border-top-color: #0066cc;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 16px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .loading-text {
+            color: #6b7280;
+            font-size: 14px;
+        }
+
+        /* Error */
+        .error {
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            color: #991b1b;
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 24px;
+            font-size: 14px;
+        }
+
+        /* Test Section */
+        .test-section {
+            background: #f9fafb;
+            border: 1px solid #e1e8ed;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 24px;
+        }
+
+        .test-result {
+            margin-top: 16px;
+            padding: 16px;
+            background: #ffffff;
+            border-radius: 6px;
+            border: 1px solid #e1e8ed;
+        }
+
+        .test-success {
+            color: #059669;
+            font-size: 14px;
+        }
+
+        .test-error {
+            color: #dc2626;
+            font-size: 14px;
+        }
+
+        .test-details {
+            margin-top: 12px;
+            padding: 12px;
+            background: #f9fafb;
+            border-radius: 4px;
+            font-size: 13px;
+            color: #374151;
+        }
+
+        /* Generate Input */
+        .generate-input {
+            display: flex;
+            gap: 12px;
+            margin-top: 16px;
+        }
+
+        .generate-input input {
+            flex: 1;
+            padding: 12px 16px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .generate-input input:focus {
+            outline: none;
+            border-color: #0066cc;
+            box-shadow: 0 0 0 3px rgba(0,102,204,0.1);
+        }
+
+        /* Status Badge */
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .status-badge.success {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .status-badge.processing {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .preview-section {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                padding: 20px;
+            }
+
+            .section {
+                padding: 24px;
+            }
+
+            .header-content {
+                padding: 16px 20px;
+            }
+
+            .tile-grid {
+                grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <div class="header">
+            <div class="header-content">
+                <div class="logo-section">
+                    <div class="logo-icon">TS</div>
+                    <div class="logo-text">
+                        <h1>Tile Shop Design Studio</h1>
+                        <p>AI-Powered Visualization Platform</p>
+                    </div>
+                </div>
+                <div class="header-badge">Powered by The PRR Group</div>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div id="app">
+                <!-- Image Source Section -->
+                <div class="section">
+                    <h2 class="section-title">Step 1: Upload Room Image</h2>
+                    <p class="section-subtitle">Upload a photo or generate one using AI</p>
+                    
+                    <div class="source-toggle">
+                        <button 
+                            class="toggle-btn"
+                            :class="{ 'active': imageSource === 'upload' }"
+                            @click="imageSource = 'upload'"
+                        >
+                            Upload Photo
+                        </button>
+                        <button 
+                            class="toggle-btn"
+                            :class="{ 'active': imageSource === 'generate' }"
+                            @click="imageSource = 'generate'"
+                        >
+                            Generate with AI
+                        </button>
+                    </div>
+
+                    <!-- Upload Option -->
+                    <div v-if="imageSource === 'upload'">
+                        <div 
+                            class="upload-area" 
+                            :class="{ 'dragover': isDragging }"
+                            @click="triggerFileInput"
+                            @dragover.prevent="isDragging = true"
+                            @dragleave.prevent="isDragging = false"
+                            @drop.prevent="handleDrop"
+                        >
+                            <div class="upload-icon">📷</div>
+                            <div class="upload-text" v-if="!originalImage">Click or drag & drop your room photo</div>
+                            <div class="upload-text" v-else>Click to change photo</div>
+                            <div class="upload-hint">Supports JPG, PNG, and other image formats</div>
+                            <input type="file" ref="fileInput" @change="handleFileSelect" accept="image/*">
+                        </div>
+                    </div>
+
+                    <!-- Generate Option -->
+                    <div v-if="imageSource === 'generate'">
+                        <div class="generate-input">
+                            <input 
+                                type="text" 
+                                v-model="generatePrompt"
+                                @keyup.enter="generateImageForTiles"
+                                placeholder="Describe the room (e.g., 'Modern kitchen with white cabinets and natural lighting')"
+                                :disabled="generating"
+                            >
+                            <button 
+                                class="btn btn-primary" 
+                                @click="generateImageForTiles"
+                                :disabled="generating || !generatePrompt.trim()"
+                            >
+                                {{ generating ? 'Generating...' : 'Generate' }}
+                            </button>
+                        </div>
+                        <div v-if="generating" class="loading">
+                            <div class="spinner"></div>
+                            <div class="loading-text">Generating your room image...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Error Message -->
+                <div v-if="error" class="error">
+                    {{ error }}
+                </div>
+
+                <!-- Preview Section -->
+                <div v-if="originalImage" class="section">
+                    <h2 class="section-title">Image Preview</h2>
+                    <div class="preview-section">
+                        <div class="preview-card">
+                            <div class="preview-header">
+                                <h3>Original Image</h3>
+                            </div>
+                            <div class="preview-body">
+                                <img :src="originalImage" alt="Original" class="preview-image">
+                            </div>
+                        </div>
+                        <div class="preview-card">
+                            <div class="preview-header">
+                                <h3>With Selected Tile</h3>
+                            </div>
+                            <div class="preview-body">
+                                <div v-if="processing" class="loading">
+                                    <div class="spinner"></div>
+                                    <div class="loading-text">Processing with AI...</div>
+                                </div>
+                                <img v-else-if="processedImage" :src="processedImage" alt="Processed" class="preview-image">
+                                <div v-else class="loading-text">Select a tile below to see preview</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tile Selection -->
+                <div v-if="originalImage" class="section">
+                    <h2 class="section-title">Step 2: Select Tile Style</h2>
+                    <p class="section-subtitle">Choose a tile SKU to apply to your room</p>
+                    <div class="tile-grid">
+                        <div 
+                            v-for="tile in tiles" 
+                            :key="tile.sku"
+                            class="tile-card"
+                            :class="{ 'selected': selectedTile?.sku === tile.sku }"
+                            @click="selectTile(tile)"
+                        >
+                            <div 
+                                class="tile-pattern" 
+                                :style="{ backgroundImage: `url(${tile.patternUrl})` }"
+                            ></div>
+                            <div class="tile-name">{{ tile.name }}</div>
+                            <div class="tile-sku">SKU: {{ tile.sku }}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Action Controls -->
+                <div v-if="originalImage && selectedTile" class="section">
+                    <div class="controls">
+                        <button 
+                            class="btn btn-primary btn-lg" 
+                            @click="applyOverlay"
+                            :disabled="processing"
+                        >
+                            <span v-if="processing">
+                                <span class="status-badge processing">Processing</span>
+                                Applying Tile with AI...
+                            </span>
+                            <span v-else>Apply Tile SKU</span>
+                        </button>
+                        <button 
+                            class="btn btn-secondary" 
+                            @click="reset"
+                            :disabled="processing"
+                        >
+                            Reset
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Test Section (Collapsible) -->
+                <div class="test-section">
+                    <button 
+                        class="btn btn-secondary"
+                        @click="testNanoBanana"
+                        :disabled="testingNano"
+                        style="width: 100%; justify-content: center;"
+                    >
+                        {{ testingNano ? 'Testing Connection...' : 'Test AI Connection' }}
+                    </button>
+                    <div v-if="nanoTestResult" class="test-result">
+                        <div v-if="nanoTestResult.success" class="test-success">
+                            <span class="status-badge success">✓ Connected</span>
+                            {{ nanoTestResult.message }}
+                            <div class="test-details">
+                                <strong>Response:</strong> {{ nanoTestResult.response }}
+                            </div>
+                        </div>
+                        <div v-else class="test-error">
+                            <strong>Error:</strong> {{ nanoTestResult.error }}
+                            <div v-if="nanoTestResult.hint" style="margin-top: 8px; font-size: 12px;">
+                                {{ nanoTestResult.hint }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    apiBaseUrl: window.location.protocol === 'file:' 
+                        ? 'http://localhost:5001' 
+                        : '',
+                    imageSource: 'upload',
+                    originalImage: null,
+                    processedImage: null,
+                    selectedTile: null,
+                    processing: false,
+                    isDragging: false,
+                    error: null,
+                    generatePrompt: '',
+                    generating: false,
+                    testingNano: false,
+                    nanoTestResult: null,
+                    tiles: [
+                        {
+                            sku: 'TS-001',
+                            name: 'Classic White',
+                            patternUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2ZmZmZmZiIvPjxwYXRoIGQ9Ik0wIDIwIEgyMDAgTTIwIDAgVjIwMCIgc3Ryb2tlPSIjZGRkIiBzdHJva2Utd2lkdGg9IjEiLz48L3N2Zz4='
+                        },
+                        {
+                            sku: 'TS-002',
+                            name: 'Slate Gray',
+                            patternUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iIzU1NTU1NSIvPjxwYXRoIGQ9Ik0wIDIwIEgyMDAgTTIwIDAgVjIwMCIgc3Ryb2tlPSIjMzMzIiBzdHJva2Utd2lkdGg9IjIiLz48L3N2Zz4='
+                        },
+                        {
+                            sku: 'TS-003',
+                            name: 'Marble Elegance',
+                            patternUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9ImciIHgxPSIwJSIgeTE9IjAlIiB4Mj0iMTAwJSIgeTI9IjEwMCUiPjxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiNmNWY1ZjUiLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiNlMGUwZTAiLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0idXJsKCNnKSIvPjwvc3ZnPg=='
+                        },
+                        {
+                            sku: 'TS-004',
+                            name: 'Herringbone',
+                            patternUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2U4ZThlOCIvPjxwYXRoIGQ9Ik0wIDQwIEw0MCAwIEw4MCA0MCBMNDAgODAgWjAgNDAgTDQwIDgwIEw4MCA0MCBMNDAgMCIgc3Ryb2tlPSIjYzBjMGMwIiBzdHJva2Utd2lkdGg9IjIiIGZpbGw9Im5vbmUiLz48L3N2Zz4='
+                        },
+                        {
+                            sku: 'TS-005',
+                            name: 'Subway Tile',
+                            patternUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2Y4ZjlmYSIvPjxwYXRoIGQ9Ik0wIDQwIEgyMDAgTTQwIDAgVjIwMCIgc3Ryb2tlPSIjZGRkIiBzdHJva2Utd2lkdGg9IjMiLz48L3N2Zz4='
+                        },
+                        {
+                            sku: 'TS-006',
+                            name: 'Mosaic Blue',
+                            patternUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iIzE3YTJiOCIvPjxyZWN0IHg9IjAiIHk9IjAiIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCIgZmlsbD0iIzI1YjJkNSIgc3Ryb2tlPSIjMGY3OTk1IiBzdHJva2Utd2lkdGg9IjIiLz48cmVjdCB4PSI0MCIgeT0iNDAiIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCIgZmlsbD0iIzI1YjJkNSIgc3Ryb2tlPSIjMGY3OTk1IiBzdHJva2Utd2lkdGg9IjIiLz48L3N2Zz4='
+                        },
+                        {
+                            sku: 'TS-007',
+                            name: 'Cream Beige',
+                            patternUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2Y1ZjVkYyIvPjxwYXRoIGQ9Ik0wIDI1IEgyMDAgTTI1IDAgVjIwMCIgc3Ryb2tlPSIjZTBlMGQ1IiBzdHJva2Utd2lkdGg9IjEuNSIvPjwvc3ZnPg=='
+                        },
+                        {
+                            sku: 'TS-008',
+                            name: 'Charcoal Black',
+                            patternUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iIzFmMWYxZiIvPjxwYXRoIGQ9Ik0wIDIwIEgyMDAgTTIwIDAgVjIwMCIgc3Ryb2tlPSIjMTAxMDEwIiBzdHJva2Utd2lkdGg9IjEuNSIvPjwvc3ZnPg=='
+                        },
+                        {
+                            sku: 'TS-009',
+                            name: 'Terracotta',
+                            patternUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2UyNzE1YSIvPjxwYXRoIGQ9Ik0wIDIwIEgyMDAgTTIwIDAgVjIwMCIgc3Ryb2tlPSIjYzY1NTE0IiBzdHJva2Utd2lkdGg9IjIiLz48L3N2Zz4='
+                        },
+                        {
+                            sku: 'TS-010',
+                            name: 'Sage Green',
+                            patternUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2E3ZjNhNyIvPjxwYXRoIGQ9Ik0wIDIwIEgyMDAgTTIwIDAgVjIwMCIgc3Ryb2tlPSIjODVkMzg1IiBzdHJva2Utd2lkdGg9IjIiLz48L3N2Zz4='
+                        },
+                        {
+                            sku: 'TS-011',
+                            name: 'Carrara Marble',
+                            patternUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9Im0iIHgxPSIwJSIgeTE9IjAlIiB4Mj0iMTAwJSIgeTI9IjEwMCUiPjxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiNmOWZhZmIiLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiNlNWU3ZWIiLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0idXJsKCNtKSIvPjxwYXRoIGQ9Ik0wIDIwIEgyMDAgTTIwIDAgVjIwMCIgc3Ryb2tlPSIjZDRkNmQ4IiBzdHJva2Utd2lkdGg9IjEiIG9wYWNpdHk9IjAuNSIvPjwvc3ZnPg=='
+                        },
+                        {
+                            sku: 'TS-012',
+                            name: 'Navy Blue',
+                            patternUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iIzFmMjkzNyIvPjxwYXRoIGQ9Ik0wIDIwIEgyMDAgTTIwIDAgVjIwMCIgc3Ryb2tlPSIjMTExODI3IiBzdHJva2Utd2lkdGg9IjEuNSIvPjwvc3ZnPg=='
+                        },
+                        {
+                            sku: 'TS-013',
+                            name: 'Brick Red',
+                            patternUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2RjMjYyNiIvPjxwYXRoIGQ9Ik0wIDIwIEgyMDAgTTIwIDAgVjIwMCIgc3Ryb2tlPSIjYjkxZTEiIHN0cm9rZS13aWR0aD0iMiIvPjwvc3ZnPg=='
+                        },
+                        {
+                            sku: 'TS-014',
+                            name: 'Ivory',
+                            patternUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2ZmZmZmMCIvPjxwYXRoIGQ9Ik0wIDIwIEgyMDAgTTIwIDAgVjIwMCIgc3Ryb2tlPSIjZWRlZGRjIiBzdHJva2Utd2lkdGg9IjEuNSIvPjwvc3ZnPg=='
+                        },
+                        {
+                            sku: 'TS-015',
+                            name: 'Travertine',
+                            patternUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9InQiIHgxPSIwJSIgeTE9IjAlIiB4Mj0iMTAwJSIgeTI9IjEwMCUiPjxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiNmNWY1ZTAiLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiNlNWU1ZDAiLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0idXJsKCN0KSIvPjxwYXRoIGQ9Ik0wIDIwIEgyMDAgTTIwIDAgVjIwMCIgc3Ryb2tlPSIjZGRkZGM4IiBzdHJva2Utd2lkdGg9IjEiIG9wYWNpdHk9IjAuNiIvPjwvc3ZnPg=='
+                        }
+                    ]
+                };
+            },
+            methods: {
+                triggerFileInput() {
+                    this.$refs.fileInput.click();
+                },
+                handleFileSelect(event) {
+                    const file = event.target.files[0];
+                    if (file) {
+                        this.loadImage(file);
+                    }
+                },
+                handleDrop(event) {
+                    this.isDragging = false;
+                    const file = event.dataTransfer.files[0];
+                    if (file && file.type.startsWith('image/')) {
+                        this.loadImage(file);
+                    }
+                },
+                loadImage(file) {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        this.originalImage = e.target.result;
+                        this.processedImage = null;
+                        this.selectedTile = null;
+                        this.error = null;
+                    };
+                    reader.readAsDataURL(file);
+                },
+                selectTile(tile) {
+                    this.selectedTile = tile;
+                    this.processedImage = null;
+                },
+                async applyOverlay() {
+                    if (!this.originalImage || !this.selectedTile) return;
+
+                    this.processing = true;
+                    this.error = null;
+
+                    try {
+                        const formData = new FormData();
+                        formData.append('image', this.dataURLtoFile(this.originalImage, 'photo.jpg'));
+                        formData.append('tileSku', this.selectedTile.sku);
+                        formData.append('tileName', this.selectedTile.name);
+                        formData.append('tilePattern', this.selectedTile.patternUrl);
+
+                        const response = await fetch(`${this.apiBaseUrl}/api/apply-overlay`, {
+                            method: 'POST',
+                            body: formData
+                        });
+
+                        if (!response.ok) {
+                            throw new Error('Failed to process image');
+                        }
+
+                        const blob = await response.blob();
+                        this.processedImage = URL.createObjectURL(blob);
+                    } catch (error) {
+                        this.error = 'Error processing image. Make sure the backend server is running.';
+                        console.error(error);
+                    } finally {
+                        this.processing = false;
+                    }
+                },
+                reset() {
+                    this.originalImage = null;
+                    this.processedImage = null;
+                    this.selectedTile = null;
+                    this.error = null;
+                    this.generatePrompt = '';
+                    this.imageSource = 'upload';
+                },
+                dataURLtoFile(dataurl, filename) {
+                    const arr = dataurl.split(',');
+                    const mime = arr[0].match(/:(.*?);/)[1];
+                    const bstr = atob(arr[1]);
+                    let n = bstr.length;
+                    const u8arr = new Uint8Array(n);
+                    while (n--) {
+                        u8arr[n] = bstr.charCodeAt(n);
+                    }
+                    return new File([u8arr], filename, { type: mime });
+                },
+                async generateImageForTiles() {
+                    if (!this.generatePrompt.trim() || this.generating) return;
+
+                    const prompt = this.generatePrompt.trim();
+                    this.generating = true;
+                    this.error = null;
+
+                    try {
+                        const response = await fetch(`${this.apiBaseUrl}/api/generate-image`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({ prompt })
+                        });
+
+                        if (!response.ok) {
+                            const errorData = await response.json().catch(() => ({}));
+                            throw new Error(errorData.error || 'Failed to generate image');
+                        }
+
+                        const data = await response.json();
+                        
+                        if (data.image_url) {
+                            this.originalImage = data.image_url;
+                            this.processedImage = null;
+                            this.selectedTile = null;
+                            this.imageSource = 'upload';
+                        } else if (data.image) {
+                            this.originalImage = data.image;
+                            this.processedImage = null;
+                            this.selectedTile = null;
+                            this.imageSource = 'upload';
+                        } else {
+                            throw new Error('No image returned from generation');
+                        }
+
+                    } catch (error) {
+                        this.error = error.message || 'Error generating image. Make sure the backend server is running.';
+                        console.error(error);
+                    } finally {
+                        this.generating = false;
+                    }
+                },
+                async testNanoBanana() {
+                    this.testingNano = true;
+                    this.nanoTestResult = null;
+
+                    try {
+                        const response = await fetch(`${this.apiBaseUrl}/api/test-nano-banana`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({ 
+                                prompt: 'Say hello! Confirm you are Nano Banana (Gemini) and that you are working correctly.' 
+                            })
+                        });
+
+                        const data = await response.json();
+                        this.nanoTestResult = data;
+
+                    } catch (error) {
+                        this.nanoTestResult = {
+                            success: false,
+                            error: error.message || 'Failed to test Nano Banana. Make sure the backend server is running.'
+                        };
+                        console.error(error);
+                    } finally {
+                        this.testingNano = false;
+                    }
+                }
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
