@@ -814,6 +814,7 @@ def serve_static(path):
     return send_from_directory('.', path)
 
 if __name__ == '__main__':
+    # Render.com sets PORT environment variable, default to 5001 for local
     port = int(os.getenv('PORT', 5001))
     debug = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
     
