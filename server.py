@@ -480,11 +480,13 @@ def apply_overlay():
             json_data = request.json or {}
             tile_sku = json_data.get('tileSku', 'TS-001')
             tile_name = json_data.get('tileName', 'Classic White')
-            image_url = json_data.get('image')
+            # Support both 'image' and 'image_base64' field names
+            image_url = json_data.get('image') or json_data.get('image_base64')
         else:
             tile_sku = request.form.get('tileSku', 'TS-001')
             tile_name = request.form.get('tileName', 'Classic White')
-            image_url = request.form.get('image')
+            # Support both 'image' and 'image_base64' field names
+            image_url = request.form.get('image') or request.form.get('image_base64')
         
         image_data = None
 
@@ -609,7 +611,28 @@ def apply_overlay():
                                     'Please try converting the image to JPEG or PNG format, or ensure WebP support is enabled in Pillow.'
                                 )
                             else:
-                                error_msg = f'Invalid image file uploaded: Could not decode image data'
+                                # Detect if this is likely from Power Automate
+                                user_agent = request.headers.get('User-Agent', '')
+                                is_power_automate = 'azure-logic-apps' in user_agent.lower() or 'microsoft-flow' in user_agent.lower()
+                                
+                                if is_power_automate:
+                                    error_msg = (
+                                        'POWER AUTOMATE BINARY FILE CORRUPTION DETECTED\n\n'
+                                        'Power Automate corrupts binary file uploads (known Microsoft issue).\n\n'
+                                        'SOLUTION - Send image as BASE64 STRING instead:\n'
+                                        '1. In Power Automate, get your file content\n'
+                                        '2. Convert to base64: base64(outputs(\'Get_file\')?[\'body\'])\n'
+                                        '3. In HTTP Request action, send as FORM FIELD (not file upload):\n'
+                                        '   - Parameter: "image" (form field, not file)\n'
+                                        '   - Value: @{base64(...your file content...)}\n'
+                                        '   - Also include: tileSku and tileName as form fields\n\n'
+                                        'The server already handles base64 strings automatically!'
+                                    )
+                                else:
+                                    error_msg = (
+                                        'Invalid image file uploaded: Could not decode image data. '
+                                        'If using Power Automate, convert file to base64 and send as string in "image" form field.'
+                                    )
                             
                             return jsonify({
                                 'error': error_msg,
@@ -619,22 +642,34 @@ def apply_overlay():
                                     'detected_format': file_format,
                                     'first_bytes_hex': raw_bytes[:50].hex() if len(raw_bytes) > 50 else raw_bytes.hex(),
                                     'decode_attempts': decoded_attempts,
-                                    'suggestion': 'Try converting to JPEG or PNG format' if file_format == 'WEBP' else 'Ensure file is a valid image format (JPEG, PNG, GIF, WebP)'
+                                    'power_automate_detected': is_power_automate,
+                                    'suggestion': 'Send image as base64 string in form field (Power Automate workaround)' if is_power_automate else ('Try converting to JPEG or PNG format' if file_format == 'WEBP' else 'Ensure file is a valid image format (JPEG, PNG, GIF, WebP)')
                                 }
                             }), 400
 
         # 🔹 Case 2: Form field or JSON with image data (URL, base64 string, or data URI)
         if not image_data and image_url:
             print(f"🔍 DEBUG - Processing image_url (length: {len(image_url) if image_url else 0})")
+            print(f"🔍 DEBUG - First 50 chars: {image_url[:50] if image_url else None}")
             
             # Check if it's a data URI (data:image/...)
             if image_url.startswith('data:image'):
                 try:
                     header, encoded = image_url.split(',', 1)
-                    image_data = base64.b64decode(encoded)
+                    print(f"🔍 DEBUG - Decoding data URI (header: {header[:50]}, encoded length: {len(encoded)})")
+                    # Clean the base64 part
+                    cleaned_encoded = encoded.strip().replace('\n', '').replace('\r', '').replace(' ', '')
+                    image_data = base64.b64decode(cleaned_encoded, validate=True)
+                    print(f"🔍 DEBUG - Data URI decoded ({len(image_data)} bytes)")
                     test_img = Image.open(io.BytesIO(image_data))
-                    print(f"✅ Decoded base64 data URI (format: {test_img.format})")
+                    test_img.load()  # Force load to verify
+                    print(f"✅ Decoded base64 data URI (format: {test_img.format}, size: {test_img.size})")
+                except base64.binascii.Error as e:
+                    print(f"🔍 DEBUG - Data URI base64 decode error: {e}")
+                    return jsonify({'error': f'Invalid base64 in data URI: {str(e)}'}), 400
                 except Exception as e:
+                    print(f"🔍 DEBUG - Data URI image validation error: {e}")
+                    print(f"🔍 DEBUG - Decoded length: {len(image_data) if 'image_data' in locals() else 0}")
                     return jsonify({'error': f'Failed to decode base64 data URI: {str(e)}'}), 400
             
             # Check if it's a URL
@@ -654,15 +689,29 @@ def apply_overlay():
             # Check if it's a plain base64 string (Power Automate might send this)
             else:
                 try:
+                    # Clean the base64 string (remove whitespace, newlines)
+                    cleaned_b64 = image_url.strip().replace('\n', '').replace('\r', '').replace(' ', '')
+                    print(f"🔍 DEBUG - Cleaning base64 string (original length: {len(image_url)}, cleaned length: {len(cleaned_b64)})")
+                    
                     # Try to decode as base64
-                    decoded = base64.b64decode(image_url)
+                    decoded = base64.b64decode(cleaned_b64, validate=True)
+                    print(f"🔍 DEBUG - Base64 decoded successfully ({len(decoded)} bytes)")
+                    
+                    # Validate it's a valid image
                     test_img = Image.open(io.BytesIO(decoded))
+                    test_img.load()  # Force load to verify
                     image_data = decoded
-                    print(f"✅ Decoded plain base64 string from form field (format: {test_img.format})")
-                except Exception as e:
-                    # If it's not base64, log for debugging but don't fail yet
-                    print(f"🔍 DEBUG - Not a valid base64 string: {e}")
+                    print(f"✅ Decoded plain base64 string from form field (format: {test_img.format}, size: {test_img.size})")
+                except base64.binascii.Error as e:
+                    print(f"🔍 DEBUG - Base64 decode error: {e}")
                     print(f"🔍 DEBUG - First 100 chars of image_url: {image_url[:100] if image_url else None}")
+                    return jsonify({'error': f'Invalid base64 string: {str(e)}'}), 400
+                except Exception as e:
+                    # If it's not base64 or image is invalid, log for debugging
+                    print(f"🔍 DEBUG - Image validation error: {e}")
+                    print(f"🔍 DEBUG - Decoded data length: {len(decoded) if 'decoded' in locals() else 0}")
+                    print(f"🔍 DEBUG - First 50 bytes (hex): {decoded[:50].hex() if 'decoded' in locals() and len(decoded) > 50 else 'N/A'}")
+                    return jsonify({'error': f'Invalid or corrupted image data: {str(e)}'}), 400
 
         # Final validation - ensure we have valid image data
         if not image_data:
