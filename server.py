@@ -661,6 +661,10 @@ def apply_overlay():
                     cleaned_encoded = encoded.strip().replace('\n', '').replace('\r', '').replace(' ', '')
                     image_data = base64.b64decode(cleaned_encoded, validate=True)
                     print(f"🔍 DEBUG - Data URI decoded ({len(image_data)} bytes)")
+                    print(f"🔍 DEBUG - First 20 bytes (hex): {image_data[:20].hex() if len(image_data) >= 20 else image_data.hex()}")
+                    print(f"🔍 DEBUG - First 20 bytes (repr): {repr(image_data[:20]) if len(image_data) >= 20 else repr(image_data)}")
+                    
+                    # Try to open the image
                     test_img = Image.open(io.BytesIO(image_data))
                     test_img.load()  # Force load to verify
                     print(f"✅ Decoded base64 data URI (format: {test_img.format}, size: {test_img.size})")
@@ -670,7 +674,60 @@ def apply_overlay():
                 except Exception as e:
                     print(f"🔍 DEBUG - Data URI image validation error: {e}")
                     print(f"🔍 DEBUG - Decoded length: {len(image_data) if 'image_data' in locals() else 0}")
-                    return jsonify({'error': f'Failed to decode base64 data URI: {str(e)}'}), 400
+                    
+                    # Try to repair if it's corrupted
+                    if 'image_data' in locals() and image_data:
+                        print(f"🔍 DEBUG - Attempting to repair corrupted image data...")
+                        
+                        # Check if it's double-encoded base64 (Power Automate sometimes does this)
+                        try:
+                            if isinstance(image_data, bytes):
+                                # Try to decode as UTF-8 string, then base64 again
+                                try:
+                                    double_decoded_str = image_data.decode('utf-8')
+                                    print(f"🔍 DEBUG - Decoded as UTF-8 string (length: {len(double_decoded_str)})")
+                                    # Check if it looks like base64
+                                    if double_decoded_str.replace('=', '').replace('+', '').replace('/', '').isalnum() or len(double_decoded_str) > 100:
+                                        double_decoded = base64.b64decode(double_decoded_str)
+                                        print(f"🔍 DEBUG - Double-decoded base64 ({len(double_decoded)} bytes)")
+                                        test_img = Image.open(io.BytesIO(double_decoded))
+                                        test_img.load()
+                                        image_data = double_decoded
+                                        print(f"✅ Fixed double-encoded base64 (format: {test_img.format}, size: {test_img.size})")
+                                    else:
+                                        raise ValueError("Doesn't look like base64")
+                                except (UnicodeDecodeError, ValueError, Exception) as double_error:
+                                    print(f"🔍 DEBUG - Not double-encoded: {double_error}")
+                        except Exception as double_check_error:
+                            print(f"🔍 DEBUG - Double-encode check failed: {double_check_error}")
+                        
+                        # Check if image_data has valid magic bytes
+                        has_valid_magic = any(image_data.startswith(magic) for magic in [b'\xff\xd8\xff', b'\x89PNG', b'RIFF', b'GIF', b'BM'])
+                        
+                        # If double-decode didn't work and no valid magic bytes, try repair function
+                        if not has_valid_magic:
+                            repaired = repair_corrupted_image_data(image_data)
+                            if repaired:
+                                try:
+                                    test_img = Image.open(io.BytesIO(repaired))
+                                    test_img.load()
+                                    image_data = repaired
+                                    print(f"✅ Repaired corrupted data URI image (format: {test_img.format}, size: {test_img.size})")
+                                except Exception as repair_error:
+                                    print(f"🔍 DEBUG - Repair failed: {repair_error}")
+                                    return jsonify({'error': f'Failed to decode base64 data URI: {str(e)}. Repair also failed: {str(repair_error)}'}), 400
+                            else:
+                                return jsonify({'error': f'Failed to decode base64 data URI: {str(e)}. Could not repair corrupted data.'}), 400
+                        else:
+                            # Image data looks valid now, try again
+                            try:
+                                test_img = Image.open(io.BytesIO(image_data))
+                                test_img.load()
+                                print(f"✅ Image validated after repair (format: {test_img.format}, size: {test_img.size})")
+                            except Exception as final_error:
+                                return jsonify({'error': f'Failed to decode base64 data URI: {str(e)}. Final validation failed: {str(final_error)}'}), 400
+                    else:
+                        return jsonify({'error': f'Failed to decode base64 data URI: {str(e)}'}), 400
             
             # Check if it's a URL
             elif image_url.startswith('http://') or image_url.startswith('https://'):
