@@ -11,11 +11,13 @@ import io
 import base64
 import os
 import requests
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin
 import re
 from dotenv import load_dotenv
 from openai import OpenAI
 import numpy as np
+import uuid
+from datetime import datetime
 
 # Google GenAI imports (new library)
 try:
@@ -39,6 +41,10 @@ load_dotenv()
 
 app = Flask(__name__, static_folder='.')
 CORS(app)
+
+# Create directory for generated images
+GENERATED_IMAGES_DIR = 'generated_images'
+os.makedirs(GENERATED_IMAGES_DIR, exist_ok=True)
 
 # Configuration - Support both Azure OpenAI and regular OpenAI
 AZURE_OPENAI_ENDPOINT = os.getenv('AZURE_OPENAI_ENDPOINT')
@@ -945,143 +951,152 @@ def ai_enhance():
 
 @app.route('/api/generate-image', methods=['POST'])
 def generate_image():
-    """Generate image using OpenAI DALL-E (since Gemini doesn't generate images)"""
+    """
+    Generate image using Nano Banana (Gemini) only
+    - Accepts prompt via form data or JSON
+    - Returns image as base64 data URL
+    """
     try:
-        # Use OpenAI DALL-E since Gemini doesn't generate images
-        if not OPENAI_API_KEY:
-            return jsonify({'error': 'OpenAI API key not configured. Add OPENAI_API_KEY to .env file'}), 503
+        # Handle both form data and JSON
+        prompt = ''
         
-        data = request.get_json()
-        prompt = data.get('prompt', '')
+        if request.content_type and 'multipart/form-data' in request.content_type:
+            prompt = request.form.get('prompt', '')
+        elif request.is_json:
+            data = request.get_json() or {}
+            prompt = data.get('prompt', '')
+        else:
+            # Try form data as fallback
+            prompt = request.form.get('prompt', '')
         
         if not prompt:
             return jsonify({'error': 'No prompt provided'}), 400
         
-        headers = {
-            'Content-Type': 'application/json'
-        }
-        
-        # Use OpenAI DALL-E for image generation
-        # Gemini models analyze images but don't generate them
-        if not openai_client:
-            return jsonify({'error': 'OpenAI client not initialized'}), 500
+        # Check Nano Banana configuration
+        if not GEMINI_API_KEY or not GENAI_AVAILABLE or not genai_client:
+            return jsonify({
+                'error': 'Nano Banana (Gemini) not configured. Add GEMINI_API_KEY to .env file',
+                'hint': 'Nano Banana is required for image generation'
+            }), 503
         
         try:
-            # Use DALL-E 3 for image generation
-            response = openai_client.images.generate(
-                model="dall-e-3",
-                prompt=prompt,
-                size="1024x1024",
-                quality="standard",
-                n=1,
+            print(f"🎨 Generating image with Nano Banana from prompt: {prompt[:100]}...")
+            
+            # Generate image from scratch with Nano Banana
+            contents = [
+                types.Content(
+                    role="user",
+                    parts=[
+                        types.Part.from_text(text=f"Generate an image: {prompt}")
+                    ]
+                ),
+            ]
+            
+            # Generate content config - request image response
+            generate_content_config = types.GenerateContentConfig(
+                temperature=1,
+                top_p=0.95,
+                max_output_tokens=32768,
+                response_modalities=["TEXT", "IMAGE"],  # Request image response
+                safety_settings=[
+                    types.SafetySetting(
+                        category="HARM_CATEGORY_HATE_SPEECH",
+                        threshold="BLOCK_NONE"
+                    ),
+                    types.SafetySetting(
+                        category="HARM_CATEGORY_DANGEROUS_CONTENT",
+                        threshold="BLOCK_NONE"
+                    ),
+                    types.SafetySetting(
+                        category="HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                        threshold="BLOCK_NONE"
+                    ),
+                    types.SafetySetting(
+                        category="HARM_CATEGORY_HARASSMENT",
+                        threshold="BLOCK_NONE"
+                    )
+                ],
             )
             
-            image_url = response.data[0].url
-            return jsonify({'image_url': image_url})
+            # Generate content using Gemini 2.5 Flash Image
+            model = "gemini-2.5-flash-image"
+            image_parts = []
+            text_parts = []
+            
+            for chunk in genai_client.models.generate_content_stream(
+                model=model,
+                contents=contents,
+                config=generate_content_config,
+            ):
+                # Check for text
+                if hasattr(chunk, 'text') and chunk.text:
+                    text_parts.append(chunk.text)
+                
+                # Check for image data in chunk
+                if hasattr(chunk, 'parts') and chunk.parts:
+                    for part in chunk.parts:
+                        if hasattr(part, 'inline_data') and part.inline_data:
+                            if hasattr(part.inline_data, 'data'):
+                                image_parts.append(part.inline_data.data)
+                
+                # Also check if chunk itself has inline_data
+                if hasattr(chunk, 'inline_data') and chunk.inline_data:
+                    if hasattr(chunk.inline_data, 'data'):
+                        image_parts.append(chunk.inline_data.data)
+            
+            # If we got an image, save it and return public URL
+            if image_parts:
+                print(f"✅ Successfully generated image with Nano Banana!")
+                img_data = image_parts[0]  # Use first image
+                
+                # Save image to disk with unique filename
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                unique_id = str(uuid.uuid4())[:8]
+                filename = f"generated_{timestamp}_{unique_id}.png"
+                filepath = os.path.join(GENERATED_IMAGES_DIR, filename)
+                
+                # Save the image
+                with open(filepath, 'wb') as f:
+                    f.write(img_data)
+                
+                print(f"💾 Saved generated image to: {filepath}")
+                
+                # Get base URL from request
+                base_url = request.url_root.rstrip('/')
+                public_url = f"{base_url}/api/images/{filename}"
+                
+                # Also create base64 data URL for immediate display
+                image_b64 = base64.b64encode(img_data).decode('utf-8')
+                image_data_url = f"data:image/png;base64,{image_b64}"
+                
+                return jsonify({
+                    'image': image_data_url,  # For immediate display
+                    'image_url': public_url,  # Public URL for sharing
+                    'public_url': public_url  # Explicit public URL field
+                })
+            
+            # If we only got text, it means Nano Banana can't generate from scratch
+            if text_parts:
+                print(f"⚠️ Nano Banana returned text instead of image: {''.join(text_parts)[:200]}...")
+                return jsonify({
+                    'error': 'Nano Banana cannot generate images from scratch',
+                    'hint': 'Nano Banana may not support image generation without an input image. Try uploading an image first, then describe what you want to change.',
+                    'response': ''.join(text_parts)[:500]
+                }), 400
+            
+            return jsonify({
+                'error': 'Nano Banana cannot generate images from scratch',
+                'hint': 'Nano Banana may not support image generation without an input image. Try uploading an image first, then describe what you want to change.'
+            }), 400
             
         except Exception as e:
-            import sys
-            sys.stdout.write(f"OpenAI DALL-E error: {e}\n")
-            sys.stdout.flush()
+            print(f"❌ Nano Banana generation error: {e}")
+            import traceback
+            traceback.print_exc()
             return jsonify({
-                'error': f'DALL-E image generation failed: {str(e)}',
-                'hint': 'Make sure your OpenAI API key has access to DALL-E 3'
+                'error': f'Nano Banana image generation failed: {str(e)}',
+                'hint': 'Make sure GEMINI_API_KEY is configured and has access to gemini-2.5-flash-image'
             }), 500
-        
-        # Old code for trying multiple endpoints - keeping as fallback
-        endpoints_to_try = []
-        
-        for endpoint_config in endpoints_to_try:
-            try:
-                url = endpoint_config['url']
-                payload = endpoint_config.get('payload', {"prompt": prompt})
-                req_headers = endpoint_config.get('headers', headers)
-                
-                import sys
-                sys.stdout.write(f"Trying endpoint: {url}\n")
-                sys.stdout.flush()
-                
-                response = requests.post(
-                    url,
-                    headers=req_headers,
-                    json=payload,
-                    timeout=30
-                )
-                
-                sys.stdout.write(f"Response status: {response.status_code}\n")
-                sys.stdout.write(f"Response body: {response.text[:500]}\n")
-                sys.stdout.flush()
-                
-                if response.status_code == 200:
-                    result = response.json()
-                    
-                    # Try different response formats
-                    if 'images' in result and len(result['images']) > 0:
-                        image_data = result['images'][0]
-                        if 'imageUrl' in image_data:
-                            return jsonify({'image_url': image_data['imageUrl']})
-                        elif 'base64' in image_data:
-                            return jsonify({'image': f"data:image/png;base64,{image_data['base64']}"})
-                        elif 'bytesBase64Encoded' in image_data:
-                            return jsonify({'image': f"data:image/png;base64,{image_data['bytesBase64Encoded']}"})
-                    
-                    # Check for direct image data
-                    if 'image' in result:
-                        return jsonify({'image': result['image']})
-                    if 'imageUrl' in result:
-                        return jsonify({'image_url': result['imageUrl']})
-                    
-                    # Vertex AI / Gemini content format
-                    if 'candidates' in result:
-                        for candidate in result['candidates']:
-                            if 'content' in candidate and 'parts' in candidate['content']:
-                                for part in candidate['content']['parts']:
-                                    if 'inlineData' in part:
-                                        base64_data = part['inlineData']['data']
-                                        mime_type = part['inlineData'].get('mimeType', 'image/png')
-                                        return jsonify({'image': f"data:{mime_type};base64,{base64_data}"})
-                    
-                    # Vertex AI Imagen response format
-                    if 'predictions' in result and len(result['predictions']) > 0:
-                        prediction = result['predictions'][0]
-                        if 'bytesBase64Encoded' in prediction:
-                            return jsonify({'image': f"data:image/png;base64,{prediction['bytesBase64Encoded']}"})
-                        elif 'image' in prediction:
-                            return jsonify({'image': prediction['image']})
-                
-                elif response.status_code == 400:
-                    # Bad request - try next endpoint
-                    error_data = response.json() if response.headers.get('content-type', '').startswith('application/json') else {}
-                    import sys
-                    sys.stdout.write(f"400 Error: {error_data}\n")
-                    sys.stdout.flush()
-                    continue
-                else:
-                    # Log but try next endpoint
-                    import sys
-                    sys.stdout.write(f"Error {response.status_code}: {response.text[:200]}\n")
-                    sys.stdout.flush()
-                    continue
-                    
-            except requests.exceptions.RequestException as e:
-                import sys
-                sys.stdout.write(f"Request error for {endpoint_config.get('url', 'unknown')}: {e}\n")
-                sys.stdout.flush()
-                continue
-            except Exception as e:
-                import sys
-                sys.stdout.write(f"Unexpected error: {e}\n")
-                sys.stdout.flush()
-                import traceback
-                traceback.print_exc()
-                continue
-        
-        # If all endpoints fail, return detailed error with helpful instructions
-        return jsonify({
-            'error': 'Image generation failed. Google Gemini models analyze images but do not generate them.',
-            'hint': 'For image generation with Google, you need: 1) Enable Generative Language API at https://console.developers.google.com/apis/api/generativelanguage.googleapis.com/overview, 2) Use Imagen API (requires different setup), OR 3) Use a different image generation service like DALL-E or Stable Diffusion',
-            'alternative': 'Consider using OpenAI DALL-E API for image generation, or enable Google Imagen API in your GCP project'
-        }), 500
         
     except Exception as e:
         print(f"Error generating image: {e}")
@@ -1172,6 +1187,23 @@ def health():
         'azure_openai_configured': bool(AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY),
         'gemini_configured': bool(GEMINI_API_KEY)
     })
+
+@app.route('/api/images/<filename>')
+def serve_generated_image(filename):
+    """Serve generated images publicly"""
+    try:
+        # Security: only allow files from generated_images directory
+        if '..' in filename or '/' in filename or '\\' in filename:
+            return jsonify({'error': 'Invalid filename'}), 400
+        
+        filepath = os.path.join(GENERATED_IMAGES_DIR, filename)
+        if not os.path.exists(filepath):
+            return jsonify({'error': 'Image not found'}), 404
+        
+        return send_from_directory(GENERATED_IMAGES_DIR, filename, mimetype='image/png')
+    except Exception as e:
+        print(f"Error serving image: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/')
 def index():

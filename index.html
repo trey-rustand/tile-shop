@@ -599,6 +599,31 @@
                             </div>
                         </div>
                     </div>
+                    
+                    <!-- Generated Image URL Display -->
+                    <div v-if="generatedImageUrl" style="margin-top: 20px; padding: 16px; background: #f9fafb; border-radius: 8px; border: 1px solid #e1e8ed;">
+                        <div style="font-weight: 500; margin-bottom: 8px; color: #1a1a1a;">🌐 Public Image URL:</div>
+                        <div style="font-size: 12px; color: #6b7280; margin-bottom: 8px;">This is a publicly accessible URL you can share or use anywhere:</div>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <input 
+                                type="text" 
+                                :value="generatedImageUrl" 
+                                readonly 
+                                style="flex: 1; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 12px; font-family: monospace; background: #ffffff;"
+                                id="generatedImageUrlInput"
+                            >
+                            <button 
+                                class="btn btn-secondary" 
+                                @click="copyImageUrl"
+                                style="padding: 8px 16px; font-size: 12px;"
+                            >
+                                Copy
+                            </button>
+                        </div>
+                        <div style="margin-top: 8px; font-size: 11px; color: #059669;">
+                            ✅ This URL is publicly accessible and can be used in any browser or application
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Tile Selection -->
@@ -695,6 +720,8 @@
                     error: null,
                     generatePrompt: '',
                     generating: false,
+                    generateImage: null,
+                    generatedImageUrl: null,
                     testingNano: false,
                     nanoTestResult: null,
                     tiles: [
@@ -844,7 +871,27 @@
                     this.selectedTile = null;
                     this.error = null;
                     this.generatePrompt = '';
+                    this.generateImage = null;
+                    this.generatedImageUrl = null;
                     this.imageSource = 'upload';
+                },
+                copyImageUrl() {
+                    const input = document.getElementById('generatedImageUrlInput');
+                    if (input) {
+                        input.select();
+                        document.execCommand('copy');
+                        // Show feedback
+                        const btn = event.target;
+                        const originalText = btn.textContent;
+                        btn.textContent = 'Copied!';
+                        btn.style.background = '#10b981';
+                        btn.style.color = 'white';
+                        setTimeout(() => {
+                            btn.textContent = originalText;
+                            btn.style.background = '';
+                            btn.style.color = '';
+                        }, 2000);
+                    }
                 },
                 dataURLtoFile(dataurl, filename) {
                     const arr = dataurl.split(',');
@@ -863,14 +910,21 @@
                     const prompt = this.generatePrompt.trim();
                     this.generating = true;
                     this.error = null;
+                    this.generatedImageUrl = null;
 
                     try {
+                        // Use FormData to send prompt
+                        const formData = new FormData();
+                        formData.append('prompt', prompt);
+                        
+                        // If image is provided, add it to the form data (for editing)
+                        if (this.generateImage) {
+                            formData.append('image', this.dataURLtoFile(this.generateImage, 'image.jpg'));
+                        }
+
                         const response = await fetch(`${this.apiBaseUrl}/api/generate-image`, {
                             method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({ prompt })
+                            body: formData
                         });
 
                         if (!response.ok) {
@@ -880,16 +934,20 @@
 
                         const data = await response.json();
                         
-                        if (data.image_url) {
-                            this.originalImage = data.image_url;
+                        // Get image from response (data URL for immediate display)
+                        const imageDataUrl = data.image || data.image_url;
+                        
+                        // Get public URL (for sharing/linking)
+                        const publicUrl = data.public_url || data.image_url;
+                        
+                        if (imageDataUrl) {
+                            this.originalImage = imageDataUrl;
+                            // Store the public URL (not the data URL) for display/sharing
+                            this.generatedImageUrl = publicUrl || imageDataUrl;
                             this.processedImage = null;
                             this.selectedTile = null;
-                            this.imageSource = 'upload';
-                        } else if (data.image) {
-                            this.originalImage = data.image;
-                            this.processedImage = null;
-                            this.selectedTile = null;
-                            this.imageSource = 'upload';
+                            this.generateImage = null; // Clear uploaded image if any
+                            this.imageSource = 'upload'; // Switch to upload view to show the image
                         } else {
                             throw new Error('No image returned from generation');
                         }

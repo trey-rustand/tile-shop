@@ -13,3 +13,4 @@ env/
 *.swo
 *~
 
+generated_images/
